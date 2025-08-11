@@ -4,7 +4,6 @@ import androidx.room.*
 import com.example.offlinesupportapp.database.entities.UserEntity
 import kotlinx.coroutines.flow.Flow
 
-//DAO, hem çevrim içi hem de çevrimdışı kullanıcı yönetimi için gerekli CRUD (Create, Read, Update, Delete) işlemlerini kapsıyor.
 @Dao
 interface UserDao {
 
@@ -20,11 +19,11 @@ interface UserDao {
     @Query("SELECT * FROM users WHERE id = :userId")
     suspend fun getUserById(userId: Int): UserEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)  //tek kullanıcı ekler veya günceller
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertUser(user: UserEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertUsers(users: List<UserEntity>)  //birden fazla kullanıcı ekler veya günceller
+    suspend fun insertUsers(users: List<UserEntity>)
 
     @Update
     suspend fun updateUser(user: UserEntity)
@@ -35,9 +34,9 @@ interface UserDao {
     @Query("DELETE FROM users")
     suspend fun clearAllUsers()
 
-    @Query("UPDATE users SET isOnline = :isOnline WHERE id = :userId")   //kullanıcı çevrimiçi durumunu günceller
+    @Query("UPDATE users SET isOnline = :isOnline WHERE id = :userId")
     suspend fun updateUserOnlineStatus(userId: Int, isOnline: Boolean)
 
     @Query("UPDATE users SET isCached = :isCached WHERE id = :userId")
-    suspend fun updateUserCacheStatus(userId: Int, isCached: Boolean)   //kullanıcı önbellek durumu günceller
+    suspend fun updateUserCacheStatus(userId: Int, isCached: Boolean)
 }

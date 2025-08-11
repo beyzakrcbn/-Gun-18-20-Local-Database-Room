@@ -1,29 +1,20 @@
 package com.example.offlinesupportapp.repository
 
 import com.example.offlinesupportapp.database.dao.UserDao
-import com.example.offlinesupportapp.database.dao.CacheDao
+import com.example.offlinesupportapp.database.dao.CacheDao  // Bu import eksikti
 import com.example.offlinesupportapp.database.entities.UserEntity
 import com.example.offlinesupportapp.database.entities.CacheEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
-import javax.inject.Inject
-import javax.inject.Singleton
 
-//Öncelikle yerel veritabanı (Room) kullanılır, gerektiğinde ağdan veri çekilir ve senkronize edilir.
-
-@Singleton
-class UserRepository @Inject constructor( //Hilt/Dagger ile dependency injection sağlanır.
+class UserRepository(
     private val userDao: UserDao,
     private val cacheDao: CacheDao
 ) {
 
-    // Tüm kullanıcılar (Flow ile anlık güncellenir).
+    // Offline-first approach: Önce yerel veriler
     fun getAllUsers(): Flow<List<UserEntity>> = userDao.getAllUsers()
-
-    fun getOnlineUsers(): Flow<List<UserEntity>> = userDao.getOnlineUsers()
-
-    fun getCachedUsers(): Flow<List<UserEntity>> = userDao.getCachedUsers() //önbellek
 
     suspend fun refreshUsers(): Result<List<UserEntity>> {
         return try {
@@ -33,14 +24,19 @@ class UserRepository @Inject constructor( //Hilt/Dagger ile dependency injection
             // Önce mevcut kullanıcıları offline olarak işaretle
             val existingUsers = userDao.getAllUsers().first()
             existingUsers.forEach { user ->
-                userDao.updateUserOnlineStatus(user.id, false)
+                val updatedUser = user.copy(isOnline = false)
+                userDao.insertUser(updatedUser) // insertUser kullanıyoruz
             }
 
             // Yeni verileri ekle/güncelle
             val updatedUsers = networkUsers.map { user ->
                 user.copy(isOnline = true, isCached = true)
             }
-            userDao.insertUsers(updatedUsers)
+
+            // Her kullanıcıyı tek tek insert et
+            updatedUsers.forEach { user ->
+                userDao.insertUser(user)
+            }
 
             // Cache'i güncelle
             cacheLastSyncTime()
@@ -65,28 +61,13 @@ class UserRepository @Inject constructor( //Hilt/Dagger ile dependency injection
         )
     }
 
-    suspend fun syncUser(userId: Int) {
-        try {
-            // Tek kullanıcı senkronizasyonu
-            val user = userDao.getUserById(userId)
-            user?.let {
-                val updatedUser = it.copy(
-                    lastSyncTime = System.currentTimeMillis(),
-                    isCached = true
-                )
-                userDao.updateUser(updatedUser)
-            }
-        } catch (e: Exception) {
-            // Hata yönetimi
-        }
-    }
-
     suspend fun clearCache() {
         cacheDao.clearAllCache()
         // Kullanıcıları cache durumunu sıfırla
         val users = userDao.getAllUsers().first()
         users.forEach { user ->
-            userDao.updateUserCacheStatus(user.id, false)
+            val updatedUser = user.copy(isCached = false)
+            userDao.insertUser(updatedUser)
         }
     }
 
@@ -102,7 +83,7 @@ class UserRepository @Inject constructor( //Hilt/Dagger ile dependency injection
         return cacheDao.getCacheData("last_sync_time")?.data?.toLongOrNull()
     }
 
-    suspend fun isDataStale(): Boolean {  //Verinin 2 dakikadan eski olup olmadığını kontrol eder.
+    suspend fun isDataStale(): Boolean {
         val lastSync = getLastSyncTime() ?: return true
         val currentTime = System.currentTimeMillis()
         val twoMinutesAgo = currentTime - (2 * 60 * 1000) // 2 dakika

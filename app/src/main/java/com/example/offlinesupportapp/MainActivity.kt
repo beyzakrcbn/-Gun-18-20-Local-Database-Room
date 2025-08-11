@@ -1,4 +1,3 @@
-// MainActivity.kt
 package com.example.offlinesupportapp
 
 import android.os.Bundle
@@ -8,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,29 +15,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.offlinesupportapp.database.AppDatabase
 import com.example.offlinesupportapp.database.entities.UserEntity
 import com.example.offlinesupportapp.repository.UserRepository
 import com.example.offlinesupportapp.ui.theme.OfflineSupportAppTheme
 import kotlinx.coroutines.launch
 
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-
-        // Database ve Repository oluşturma
         val database = AppDatabase.getDatabase(this)
         val repository = UserRepository(database.userDao(), database.cacheDao())
 
         setContent {
             OfflineSupportAppTheme {
-                OfflineSupportApp(repository)
+                UserListApp(repository)
             }
         }
     }
@@ -45,28 +42,35 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OfflineSupportApp(repository: UserRepository) {
+fun UserListApp(repository: UserRepository) {
     val scope = rememberCoroutineScope()
-    val users by repository.getAllUsers().collectAsState(initial = emptyList())
-    val onlineUsers by repository.getOnlineUsers().collectAsState(initial = emptyList())
-    val cachedUsers by repository.getCachedUsers().collectAsState(initial = emptyList())
-
+    var users by remember { mutableStateOf<List<UserEntity>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
-    var lastSyncTime by remember { mutableStateOf<Long?>(null) }
-    var syncStatus by remember { mutableStateOf("No sync yet") }
+    var hasError by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
 
-    // İlk açılışta son sync zamanını kontrol et
+    // İlk yüklemede verileri al
     LaunchedEffect(Unit) {
-        lastSyncTime = repository.getLastSyncTime()
-        updateSyncStatus(lastSyncTime) { syncStatus = it }
+        loadUsers(repository) { userList, loading, error, message ->
+            users = userList
+            isLoading = loading
+            hasError = error
+            errorMessage = message
+        }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Offline Support App") },
+                title = {
+                    Text(
+                        "User List App - API Integration",
+                        fontSize = 16.sp
+                    )
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    titleContentColor = Color.White
                 )
             )
         }
@@ -77,25 +81,51 @@ fun OfflineSupportApp(repository: UserRepository) {
                 .padding(innerPadding)
                 .padding(16.dp)
         ) {
-            // Offline Data Header
+            // Header Section
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                )
+                    containerColor = Color(0xFFF5F5F5)
+                ),
+                shape = RoundedCornerShape(8.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "📱 Offline Data",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = "Sync Status: $syncStatus")
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📋 Users",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "[${users.size}]",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    if (isLoading) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "⏳ Loading users...",
+                            fontSize = 14.sp,
+                            color = Color.Gray
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
 
-                    // Action Buttons
+                    // Buttons
+                    Spacer(modifier = Modifier.height(16.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -103,77 +133,77 @@ fun OfflineSupportApp(repository: UserRepository) {
                         Button(
                             onClick = {
                                 scope.launch {
-                                    isLoading = true
-                                    repository.refreshUsers()
-                                    lastSyncTime = repository.getLastSyncTime()
-                                    updateSyncStatus(lastSyncTime) { syncStatus = it }
-                                    isLoading = false
+                                    loadUsers(repository) { userList, loading, error, message ->
+                                        users = userList
+                                        isLoading = loading
+                                        hasError = error
+                                        errorMessage = message
+                                    }
                                 }
                             },
                             enabled = !isLoading,
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("🔄 Sync Now")
+                            Text("🔄 Refresh")
                         }
 
                         OutlinedButton(
                             onClick = {
                                 scope.launch {
+                                    // Clear cache action
                                     repository.clearCache()
-                                    syncStatus = "Cache cleared"
+                                    // Show cleared message
+                                    users = emptyList()
+                                    hasError = false
+                                    isLoading = false
                                 }
                             },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("🗑️ Clear Cache")
+                            Text("⚙️ Settings")
                         }
-                    }
-
-                    if (isLoading) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LinearProgressIndicator(
-                            modifier = Modifier.fillMaxWidth()
-                        )
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // User Lists
-            LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Cached Users Section
-                if (cachedUsers.isNotEmpty()) {
-                    item {
-                        UserSection(
-                            title = "📦 Cached Users (${cachedUsers.size})",
-                            users = cachedUsers,
-                            statusColor = Color(0xFF4CAF50)
-                        )
+            // Content Section
+            if (hasError) {
+                // Error State
+                ErrorSection(
+                    message = errorMessage,
+                    onRetry = {
+                        scope.launch {
+                            loadUsers(repository) { userList, loading, error, message ->
+                                users = userList
+                                isLoading = loading
+                                hasError = error
+                                errorMessage = message
+                            }
+                        }
                     }
-                }
-
-                // Online Users Section
-                if (onlineUsers.isNotEmpty()) {
-                    item {
-                        UserSection(
-                            title = "🟢 Online Users (${onlineUsers.size})",
-                            users = onlineUsers,
-                            statusColor = Color(0xFF2196F3)
-                        )
+                )
+            } else {
+                // User List
+                if (users.isNotEmpty()) {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        items(users) { user ->
+                            UserListItem(user)
+                        }
                     }
-                }
-
-                // Offline Users
-                val offlineUsers = users.filter { !it.isOnline }
-                if (offlineUsers.isNotEmpty()) {
-                    item {
-                        UserSection(
-                            title = "⚫ Offline Users (${offlineUsers.size})",
-                            users = offlineUsers,
-                            statusColor = Color(0xFF757575)
+                } else if (!isLoading) {
+                    // Empty State
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "📭 No users found",
+                            fontSize = 16.sp,
+                            color = Color.Gray
                         )
                     }
                 }
@@ -183,99 +213,153 @@ fun OfflineSupportApp(repository: UserRepository) {
 }
 
 @Composable
-fun UserSection(
-    title: String,
-    users: List<UserEntity>,
-    statusColor: Color
+fun UserListItem(user: UserEntity) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // User Icon
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(
+                        Color(0xFF2196F3),
+                        RoundedCornerShape(4.dp)
+                    )
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // User Info
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = "👤 ${user.name}",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "📧 ${user.email}",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ErrorSection(
+    message: String,
+    onRetry: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFFFFEBEE)
+        ),
+        shape = RoundedCornerShape(8.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "Error Handling:",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFFD32F2F)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White
+                ),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .background(statusColor, RoundedCornerShape(4.dp))
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = title,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "🚫 Network Error",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            users.forEach { user ->
-                UserItem(user = user)
-                if (user != users.last()) {
                     Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "❌",
+                        fontSize = 24.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "İnternet bağlantısı yok",
+                        fontSize = 12.sp,
+                        color = Color.Gray,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(
+                        onClick = onRetry,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFD32F2F)
+                        )
+                    ) {
+                        Text(
+                            text = "[RETRY]",
+                            color = Color.White
+                        )
+                    }
                 }
             }
         }
     }
 }
 
-@Composable
-fun UserItem(user: UserEntity) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "👤 ${user.name}",
-                fontWeight = FontWeight.Medium
-            )
-            Text(
-                text = user.email,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-            )
-        }
+private suspend fun loadUsers(
+    repository: UserRepository,
+    onResult: (List<UserEntity>, Boolean, Boolean, String) -> Unit
+) {
+    onResult(emptyList(), true, false, "")
 
-        Row {
-            if (user.isCached) {
-                Text(
-                    text = "[📦 Cached]",
-                    fontSize = 11.sp,
-                    color = Color(0xFF4CAF50)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
+    try {
+        // Simulate delay like real network
+        kotlinx.coroutines.delay(1500)
+
+        val result = repository.refreshUsers()
+        if (result.isSuccess) {
+            // Get fresh data from repository
+            repository.getAllUsers().collect { userList ->
+                onResult(userList, false, false, "")
+                return@collect
             }
-
-            Text(
-                text = if (user.isOnline) "[🟢 Online]" else "[⚫ Offline]",
-                fontSize = 11.sp,
-                color = if (user.isOnline) Color(0xFF2196F3) else Color(0xFF757575)
-            )
+        } else {
+            // Simulate network error sometimes
+            if (kotlin.random.Random.nextBoolean()) {
+                onResult(emptyList(), false, true, "İnternet bağlantısı yok")
+            } else {
+                onResult(emptyList(), false, false, "")
+            }
         }
+    } catch (e: Exception) {
+        onResult(emptyList(), false, true, "Network error occurred")
     }
-}
-  //fonksiyonu son sync zamanını okunabilir zamana çevirir ve ekranda gösterir.
-private fun updateSyncStatus(lastSyncTime: Long?, onUpdate: (String) -> Unit) {
-    if (lastSyncTime == null) {
-        onUpdate("No sync yet")
-        return
-    }
-
-    val currentTime = System.currentTimeMillis()
-    val diffInMinutes = (currentTime - lastSyncTime) / (1000 * 60)
-
-    val status = when {
-        diffInMinutes < 1 -> "Last sync: Just now"
-        diffInMinutes < 60 -> "Last sync: ${diffInMinutes}m ago"
-        else -> {
-            val hours = diffInMinutes / 60
-            "Last sync: ${hours}h ago"
-        }
-    }
-
-    onUpdate(status)
 }
