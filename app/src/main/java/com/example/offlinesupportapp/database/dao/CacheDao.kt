@@ -4,6 +4,7 @@ import androidx.room.*
 import com.example.offlinesupportapp.database.entities.CacheEntity
 import kotlinx.coroutines.flow.Flow
 
+
 @Dao
 interface CacheDao {
 
