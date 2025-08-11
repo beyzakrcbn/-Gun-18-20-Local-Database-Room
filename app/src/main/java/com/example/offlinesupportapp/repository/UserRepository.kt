@@ -1,92 +1,74 @@
 package com.example.offlinesupportapp.repository
 
+import com.example.offlinesupportapp.database.dao.CacheDao
 import com.example.offlinesupportapp.database.dao.UserDao
-import com.example.offlinesupportapp.database.dao.CacheDao  // Bu import eksikti
-import com.example.offlinesupportapp.database.entities.UserEntity
 import com.example.offlinesupportapp.database.entities.CacheEntity
+import com.example.offlinesupportapp.database.entities.UserEntity
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.delay
+import kotlin.random.Random
 
 class UserRepository(
     private val userDao: UserDao,
     private val cacheDao: CacheDao
 ) {
-
-    // Offline-first approach: Önce yerel veriler
     fun getAllUsers(): Flow<List<UserEntity>> = userDao.getAllUsers()
 
     suspend fun refreshUsers(): Result<List<UserEntity>> {
         return try {
-            // Simüle edilmiş ağ çağrısı
-            val networkUsers = fetchUsersFromNetwork()
+            // Simulate API call delay
+            delay(1000)
 
-            // Önce mevcut kullanıcıları offline olarak işaretle
-            val existingUsers = userDao.getAllUsers().first()
-            existingUsers.forEach { user ->
-                val updatedUser = user.copy(isOnline = false)
-                userDao.insertUser(updatedUser) // insertUser kullanıyoruz
+            // Simulate random network failure (30% chance)
+            if (Random.nextFloat() < 0.3f) {
+                return Result.failure(Exception("Network connection failed"))
             }
 
-            // Yeni verileri ekle/güncelle
-            val updatedUsers = networkUsers.map { user ->
-                user.copy(isOnline = true, isCached = true)
-            }
+            // Mock API data - simulating JSONPlaceholder API response
+            val mockUsers = listOf(
+                UserEntity(1, "John Doe", "john@example.com", "555-0105", "john.web"),
+                UserEntity(2, "Jane Smith", "jane@example.com", "555-0104", "jane.app"),
+                UserEntity(3, "Bob Johnson", "bob@example.com", "555-0102", "bob.tech"),
+                UserEntity(4, "Alice Brown", "alice@example.com", "555-0101", "alice.dev"),
+                UserEntity(5, "David Wilson", "david@example.com", "555-0103", "david.info"),
+                UserEntity(6, "Sarah Connor", "sarah@example.com", "555-0106", "sarah.dev"),
+                UserEntity(7, "Mike Johnson", "mike@example.com", "555-0107", "mike.tech"),
+                UserEntity(8, "Lisa Anderson", "lisa@example.com", "555-0108", "lisa.design"),
+                UserEntity(9, "Tom Wilson", "tom@example.com", "555-0109", "tom.marketing"),
+                UserEntity(10, "Emma Davis", "emma@example.com", "555-0110", "emma.sales"),
+                UserEntity(11, "Chris Brown", "chris@example.com", "555-0111", "chris.support"),
+                UserEntity(12, "Anna Taylor", "anna@example.com", "555-0112", "anna.hr")
+            )
 
-            // Her kullanıcıyı tek tek insert et
-            updatedUsers.forEach { user ->
-                userDao.insertUser(user)
-            }
+            // Save to database
+            userDao.insertUsers(mockUsers)
 
-            // Cache'i güncelle
-            cacheLastSyncTime()
+            // Update cache info
+            cacheDao.insertCacheInfo(
+                CacheEntity(
+                    key = "users_cache",
+                    lastSyncTime = System.currentTimeMillis(),
+                    dataType = "users"
+                )
+            )
 
-            Result.success(updatedUsers)
+            Result.success(mockUsers)
+
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    private suspend fun fetchUsersFromNetwork(): List<UserEntity> {
-        // Simüle edilmiş ağ gecikmesi
-        delay(1000)
-
-        // Simüle edilmiş ağ verisi
-        return listOf(
-            UserEntity(1, "Alice Brown", "alice@example.com", true, true),
-            UserEntity(2, "David Wilson", "david@example.com", true, true),
-            UserEntity(3, "John Doe", "john@example.com", false, true),
-            UserEntity(4, "Jane Smith", "jane@example.com", false, true),
-            UserEntity(5, "Bob Johnson", "bob@example.com", false, true)
-        )
-    }
-
     suspend fun clearCache() {
+        userDao.deleteAllUsers()
         cacheDao.clearAllCache()
-        // Kullanıcıları cache durumunu sıfırla
-        val users = userDao.getAllUsers().first()
-        users.forEach { user ->
-            val updatedUser = user.copy(isCached = false)
-            userDao.insertUser(updatedUser)
-        }
     }
 
-    private suspend fun cacheLastSyncTime() {
-        val syncCache = CacheEntity(
-            key = "last_sync_time",
-            data = System.currentTimeMillis().toString()
-        )
-        cacheDao.insertCache(syncCache)
+    suspend fun getCacheInfo(): CacheEntity? {
+        return cacheDao.getCacheInfo("users_cache")
     }
 
-    suspend fun getLastSyncTime(): Long? {
-        return cacheDao.getCacheData("last_sync_time")?.data?.toLongOrNull()
-    }
-
-    suspend fun isDataStale(): Boolean {
-        val lastSync = getLastSyncTime() ?: return true
-        val currentTime = System.currentTimeMillis()
-        val twoMinutesAgo = currentTime - (2 * 60 * 1000) // 2 dakika
-        return lastSync < twoMinutesAgo
+    suspend fun getUserCount(): Int {
+        return userDao.getUserCount()
     }
 }

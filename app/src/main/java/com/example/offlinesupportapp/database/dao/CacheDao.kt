@@ -1,27 +1,24 @@
 package com.example.offlinesupportapp.database.dao
 
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
+import androidx.room.*
 import com.example.offlinesupportapp.database.entities.CacheEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface CacheDao {
 
-    @Query("SELECT * FROM cache WHERE `key` = :key")
-    suspend fun getCacheData(key: String): CacheEntity?
-
-    @Query("SELECT * FROM cache")
-    fun getAllCacheData(): Flow<List<CacheEntity>>
+    @Query("SELECT * FROM cache_info WHERE `key` = :key")
+    suspend fun getCacheInfo(key: String): CacheEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCache(cache: CacheEntity)
+    suspend fun insertCacheInfo(cacheInfo: CacheEntity)
 
-    @Query("DELETE FROM cache WHERE `key` = :key")
-    suspend fun deleteCacheByKey(key: String)
-
-    @Query("DELETE FROM cache")
+    @Query("DELETE FROM cache_info")
     suspend fun clearAllCache()
+
+    @Query("DELETE FROM cache_info WHERE `key` = :key")
+    suspend fun deleteCacheInfo(key: String)
+
+    @Query("SELECT * FROM cache_info")
+    fun getAllCacheInfo(): Flow<List<CacheEntity>>
 }

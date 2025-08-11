@@ -1,21 +1,20 @@
 package com.example.offlinesupportapp.database
 
+import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import android.content.Context
+import com.example.offlinesupportapp.database.dao.CacheDao
 import com.example.offlinesupportapp.database.dao.UserDao
 import com.example.offlinesupportapp.database.entities.CacheEntity
 import com.example.offlinesupportapp.database.entities.UserEntity
-import com.example.offlinesupportapp.database.dao.CacheDao
 
 @Database(
     entities = [UserEntity::class, CacheEntity::class],
-    version = 1, // İlk sürüm
+    version = 1,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
-
     abstract fun userDao(): UserDao
     abstract fun cacheDao(): CacheDao
 
@@ -28,8 +27,9 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "app_database"
+                    "offline_support_database"
                 )
+                    .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance
                 instance

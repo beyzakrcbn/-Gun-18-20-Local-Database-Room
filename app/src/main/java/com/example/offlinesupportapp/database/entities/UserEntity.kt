@@ -5,10 +5,11 @@ import androidx.room.PrimaryKey
 
 @Entity(tableName = "users")
 data class UserEntity(
-    @PrimaryKey val id: Int,
+    @PrimaryKey
+    val id: Int,
     val name: String,
     val email: String,
-    val isOnline: Boolean = false,
-    val isCached: Boolean = false,
-    val lastSyncTime: Long = System.currentTimeMillis()
+    val phone: String? = null,
+    val website: String? = null,
+    val isFromCache: Boolean = false
 )
