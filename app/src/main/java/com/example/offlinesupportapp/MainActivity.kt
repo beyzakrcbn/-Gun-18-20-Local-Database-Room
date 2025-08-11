@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        
         // Database ve Repository oluşturma
         val database = AppDatabase.getDatabase(this)
         val repository = UserRepository(database.userDao(), database.cacheDao())
